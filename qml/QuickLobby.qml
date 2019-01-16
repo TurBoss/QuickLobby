@@ -50,4 +50,5 @@ ApplicationWindow {
             id: downloads
         }
     }
+    LobbyLogin  {}
 }

@@ -6,12 +6,10 @@ import time
 import yaml
 
 from PyQt5 import QtNetwork
-from PyQt5.QtCore import QFile, QIODevice, QUrl, pyqtSlot, QObject
+from PyQt5.QtCore import QUrl, pyqtSlot
 from PyQt5.QtGui import QGuiApplication
-from PyQt5.QtQml import QQmlApplicationEngine
-from PyQt5.QtQuick import QQuickView
-from PyQt5.QtWidgets import QWidget, QApplication, QVBoxLayout, QPushButton, QListWidget, QMessageBox, QHBoxLayout, \
-    QLineEdit
+from PyQt5.QtQml import QQmlApplicationEngine, QQmlComponent
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QMessageBox, QHBoxLayout, QLineEdit
 
 
 class SpringTerm(QWidget):
@@ -164,6 +162,7 @@ if __name__ == '__main__':
     app = QGuiApplication(sys.argv)
     lobby = QuickLobby()
 
-    for win in lobby.rootObjects():
-        win.show()
+    for window in lobby.rootObjects():
+        window.show()
+
     sys.exit(app.exec_())
