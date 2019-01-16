@@ -10,7 +10,7 @@ Rectangle {
         ColumnLayout {
             ListView {
                 id: roomView
-                width: 180
+                width: parent.width
                 height: root.height - pane.height
                 Layout.fillWidth: true
                 Layout.fillHeight: true

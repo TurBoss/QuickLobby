@@ -56,6 +56,7 @@ Popup {
                     id: login_password
                     Layout.fillWidth: true
                     echoMode: TextInput.Password
+                    placeholderText: "Pasword"
                     enabled: true
                 }
 
@@ -94,6 +95,7 @@ Popup {
                     id: register_password
                     Layout.fillWidth: true
                     echoMode: TextInput.Password
+                    placeholderText: "Pasword"
                     enabled: true
                 }
 
@@ -101,6 +103,7 @@ Popup {
                     id: register_password2
                     Layout.fillWidth: true
                     echoMode: TextInput.Password
+                    placeholderText: "Pasword"
                     enabled: true
                 }
 
