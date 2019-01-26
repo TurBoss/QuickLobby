@@ -4,7 +4,7 @@ import QtQuick.Layouts 1.11
 import QtQuick.Controls 2.4
 
 Popup {
-    id: loggin
+    id: login_dialog
     width: 400
     height: 400
 
@@ -15,7 +15,6 @@ Popup {
     focus: true
 
     visible: true
-
 
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
 
@@ -66,7 +65,7 @@ Popup {
                     text: "Login"
 
                     onClicked: {
-
+                        quicklobby.login(login_username.text, login_password.text)
                     }
                 }
             }
@@ -118,7 +117,15 @@ Popup {
                 }
             }
         }
+        Connections {
+            target: login_dialog
+            onLoginSignal: {
+                console.log("test_login")
+            }
+            onRegisterSignal: {
+                console.log("test_register")
+
+            }
+        }
     }
-
-
 }

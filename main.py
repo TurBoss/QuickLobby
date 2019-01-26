@@ -1,168 +1,115 @@
 # -*- coding: utf-8 -*-
 
 import os
+import signal
 import sys
 import time
+import asyncio
 import yaml
+import ssl
 
-from PyQt5 import QtNetwork
-from PyQt5.QtCore import QUrl, pyqtSlot
-from PyQt5.QtGui import QGuiApplication
-from PyQt5.QtQml import QQmlApplicationEngine, QQmlComponent
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QMessageBox, QHBoxLayout, QLineEdit
+from hashlib import md5
+from base64 import b64encode as ENCODE_FUNC
+
+import logging
+
+from asyncspring.spring import connect
+
+from PyQt5.QtCore import QUrl, pyqtSlot, pyqtSignal
+from PyQt5.QtQml import QQmlApplicationEngine
+
+from quamash import QEventLoop, QApplication
 
 
-class SpringTerm(QWidget):
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("quamash").setLevel(level=logging.INFO)
 
-    def __init__(self, parent=None):
-        QWidget.__init__(self, parent)
 
-        self.tcpClient = QtNetwork.QTcpSocket()
-        self.tcpClient.readyRead.connect(self.getData)
-        self.tcpClient.error.connect(self.displayError)
-
-        with open("config.yaml") as yml_file:
-            self.cfg = yaml.load(yml_file)
-
-        host = self.cfg["server"]["host"]
-        port = str(self.cfg["server"]["port"])
-
-        self.setGeometry(0, 0, 800, 600)
-        self.setWindowTitle('SpringTerm')
-
-        self.layout = QVBoxLayout(self)
-
-        self.server_layout = QHBoxLayout(self)
-
-        self.server_widget = QLineEdit(host)
-        self.port_widget = QLineEdit(port)
-
-        self.server_layout.addWidget(self.server_widget)
-        self.server_layout.addWidget(self.port_widget)
-
-        self.layout.addLayout(self.server_layout)
-
-        self.open_button = QPushButton("Connect")
-        self.open_button.clicked.connect(self.startAq)
-        self.open_button.setEnabled(True)
-
-        self.close_button = QPushButton("Disconnect")
-        self.close_button.clicked.connect(self.stopAq)
-        self.close_button.setEnabled(False)
-
-        self.button_layout = QHBoxLayout(self)
-
-        self.button_layout.addWidget(self.open_button)
-        self.button_layout.addWidget(self.close_button)
-
-        self.layout.addLayout(self.button_layout)
-
-        self.list_layout = QHBoxLayout(self)
-
-        self.list_widget = QListWidget(self)
-        self.history_widget = QListWidget(self)
-        self.history_widget.clicked.connect(self.history_clicked)
-
-        self.list_layout.addWidget(self.history_widget)
-        self.list_layout.addWidget(self.list_widget)
-
-        self.layout.addLayout(self.list_layout)
-
-        self.prompt_widget = QLineEdit()
-
-        self.send_button = QPushButton("Send")
-        self.send_button.clicked.connect(self.send)
-        self.send_button.setEnabled(False)
-
-        self.prompt_layout = QHBoxLayout(self)
-
-        self.prompt_layout.addWidget(self.prompt_widget)
-        self.prompt_layout.addWidget(self.send_button)
-
-        self.layout.addLayout(self.prompt_layout)
-
-    def add(self, text):
-        """ Add item to list widget """
-        self.list_widget.addItem(text)
-
-    def store(self, text):
-        """ Add item to history widget """
-        self.history_widget.addItem(text)
-
-    def getData(self):
-
-        while self.tcpClient.bytesAvailable():
-
-            received_data = self.tcpClient.readLine(1024)
-
-            if received_data:
-                self.add(received_data.decode().rstrip())
-
-    def send(self):
-        text = self.prompt_widget.text()
-        self.store(text)
-        self.tcpClient.write('{}\n'.format(text).encode())
-
-    def startAq(self):
-        # Network stuff
-
-        host = self.server_widget.text()
-        port = int(self.port_widget.text())
-
-        self.tcpClient.connectToHost(host, port)
-
-        self.open_button.setEnabled(False)
-        self.send_button.setEnabled(True)
-        self.close_button.setEnabled(True)
-
-    def stopAq(self):
-        self.measure = False
-        self.tcpClient.close()
-
-        self.send_button.setEnabled(False)
-        self.close_button.setEnabled(False)
-        self.open_button.setEnabled(True)
-
-    def history_clicked(self, index):
-        self.prompt_widget.setText("")
-        text = self.history_widget.currentItem().text()
-
-        self.prompt_widget.setText(text)
-
-    def displayError(self, socketError):
-        if socketError == QtNetwork.QAbstractSocket.RemoteHostClosedError:
-            QMessageBox.information(self, "SpringTerm",
-                                    "The remote host closed the connection")
-        elif socketError == QtNetwork.QAbstractSocket.HostNotFoundError:
-            QMessageBox.information(self, "SpringTerm",
-                                    "The host was not found. Please check the host name and "
-                                    "port settings.")
-        elif socketError == QtNetwork.QAbstractSocket.ConnectionRefusedError:
-            QMessageBox.information(self, "SpringTerm",
-                                    "The connection was refused by the peer. Make sure the "
-                                    "spring server is running, and check that the host name "
-                                    "and port settings are correct.")
-        else:
-            QMessageBox.information(self, "SpringTerm",
-                                    "The following error occurred: %s." % self.tcpSocket.errorString())
+def EncodePassword(password):
+    return ENCODE_FUNC(md5(password.encode()).digest()).decode()
 
 
 class QuickLobby(QQmlApplicationEngine):
-    def __init__(self):
+
+    loginSuccesSignal = pyqtSignal(int, arguments=['result'])
+    registerSignal = pyqtSignal(int, arguments=['register'])
+
+    def __init__(self, loop):
+        self.loop = loop
         super(QuickLobby, self).__init__()
+
+        self.stop_signal = self.loop.create_future()
+
         self.load(QUrl('qml/QuickLobby.qml'))
-        self.rootContext().setContextProperty("QuickLobby", self)
+        self.rootContext().setContextProperty("quicklobby", self)
 
-    @pyqtSlot('QString')
-    def Print(self, value):
-        print(value)
+        with open("config.yaml", 'r') as yml_file:
+            cfg = yaml.load(yml_file)
+
+        self.lobby_host = cfg["server"]["host"]
+        self.lobby_port = cfg["server"]["port"]
+
+        self.client = None
+
+    @pyqtSlot('QString', 'QString')
+    def login(self, username, password):
+        if self.client is None:
+            password = EncodePassword(password)
+
+            coro = self.lobby_connect(username, password)
+            asyncio.Task(coro)
+
+            # self.loginSuccesSignal.emit(True)
+        else:
+            print("already login")
+
+    @pyqtSlot('QString', 'QString', 'QString', 'QString')
+    def register(self, username, email, password1, password2):
+
+        self.registerSignal.emit()
+
+    def closeEvent(self, event):
+        self.shutdown()
+        event.accept()
+
+    def shutdown(self, signal=None):
+        try:
+            print("stopping")
+            self.stop_signal.set_result('shutdown')
+        except asyncio.InvalidStateError:
+            raise SystemExit
+
+    async def lobby_connect(self, username, password):
+
+        if self.client is None:
+            self.client = await connect(self.lobby_host, port=self.lobby_port, use_ssl=False)
+            self.client.login(username, password)
+
+            @self.client.on("said")
+            def incoming_message(parsed, user, target, text):
+                print(parsed)
+                # parsed is an RFC1459Message object
+                # user is a User object with nick, user, and host attributes
+                # target is a string representing nick/channel the message was sent to
+                # text is the text of the message
+                # self.client.say(target, "{}: you said {}".format(user.nick, text))
 
 
-if __name__ == '__main__':
-    app = QGuiApplication(sys.argv)
-    lobby = QuickLobby()
+def main():
+    app = QApplication(sys.argv)
+    loop = QEventLoop(app)
+    # loop.set_debug(True)
+    asyncio.set_event_loop(loop)  # NEW must set the event loop
+
+    lobby = QuickLobby(loop)
+    loop.add_signal_handler(signal.SIGINT, lobby.shutdown, None)
 
     for window in lobby.rootObjects():
         window.show()
 
-    sys.exit(app.exec_())
+    with loop:
+        loop.run_forever()
+
+
+if __name__ == "__main__":
+    main()
