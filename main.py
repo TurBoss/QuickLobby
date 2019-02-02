@@ -15,7 +15,7 @@ import logging
 
 from asyncspring.spring import connect
 
-from PyQt5.QtCore import QUrl, pyqtSlot, pyqtSignal
+from PyQt5.QtCore import QUrl, pyqtSlot, pyqtSignal, QObject
 from PyQt5.QtQml import QQmlApplicationEngine
 
 from quamash import QEventLoop, QApplication
@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("quamash").setLevel(level=logging.INFO)
 
 
-def EncodePassword(password):
+def encode_password(password):
     return ENCODE_FUNC(md5(password.encode()).digest()).decode()
 
 
@@ -54,12 +54,13 @@ class QuickLobby(QQmlApplicationEngine):
     @pyqtSlot('QString', 'QString')
     def login(self, username, password):
         if self.client is None:
-            password = EncodePassword(password)
+            password = encode_password(password)
 
-            coro = self.lobby_connect(username, password)
-            asyncio.Task(coro)
+            self.client = asyncio.coroutine(self._lobby_connect(username, password))
 
-            # self.loginSuccesSignal.emit(True)
+            self.loginSuccesSignal.emit(True)
+            print("loged in")
+
         else:
             print("already login")
 
@@ -79,7 +80,7 @@ class QuickLobby(QQmlApplicationEngine):
         except asyncio.InvalidStateError:
             raise SystemExit
 
-    async def lobby_connect(self, username, password):
+    async def _lobby_connect(self, username, password):
 
         if self.client is None:
             self.client = await connect(self.lobby_host, port=self.lobby_port, use_ssl=False)
